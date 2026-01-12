@@ -15,19 +15,19 @@ $port8000 = netstat -ano | findstr ":8000" | findstr "LISTENING"
 $port3000 = netstat -ano | findstr ":3000" | findstr "LISTENING"
 
 if ($port8000) {
-    $pids = $port8000 | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
-    foreach ($pid in $pids) {
-        if ($pid -match '^\d+$') {
-            taskkill /F /PID $pid 2>$null | Out-Null
+    $processIds = $port8000 | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
+    foreach ($processId in $processIds) {
+        if ($processId -match '^\d+$') {
+            taskkill /F /PID $processId 2>$null | Out-Null
         }
     }
 }
 
 if ($port3000) {
-    $pids = $port3000 | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
-    foreach ($pid in $pids) {
-        if ($pid -match '^\d+$') {
-            taskkill /F /PID $pid 2>$null | Out-Null
+    $processIds = $port3000 | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -Unique
+    foreach ($processId in $processIds) {
+        if ($processId -match '^\d+$') {
+            taskkill /F /PID $processId 2>$null | Out-Null
         }
     }
 }

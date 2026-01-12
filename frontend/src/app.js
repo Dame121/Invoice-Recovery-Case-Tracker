@@ -1,6 +1,6 @@
 /**
- * Main Application Script for Invoice Recovery Tracker
- * Handles UI interactions and connects to the API
+ * Invoice Recovery Tracker - Main Application Script
+ * Clean, minimal Bootstrap-based UI with error handling
  */
 
 // ==================== STATE ====================
@@ -16,178 +16,163 @@ let caseStatusFilter = '';
 let caseSortOrder = 'asc';
 let editingCaseId = null;
 
-let deleteType = null; // 'client' or 'case'
+let deleteType = null;
 let deleteId = null;
 
-// ==================== DOM ELEMENTS ====================
-// Tabs
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabContents = document.querySelectorAll('.tab-content');
-
-// Client Elements
-const clientForm = document.getElementById('clientForm');
-const clientFormMessage = document.getElementById('clientFormMessage');
-const clientList = document.getElementById('clientList');
-const clientPagination = document.getElementById('clientPagination');
-const clientSearchInput = document.getElementById('clientSearchInput');
-const clientSearchBtn = document.getElementById('clientSearchBtn');
-const submitClientBtn = document.getElementById('submitClientBtn');
-const cancelClientBtn = document.getElementById('cancelClientBtn');
-
-// Case Elements
-const caseForm = document.getElementById('caseForm');
-const caseFormMessage = document.getElementById('caseFormMessage');
-const caseFormTitle = document.getElementById('caseFormTitle');
-const caseList = document.getElementById('caseList');
-const casePagination = document.getElementById('casePagination');
-const caseSearchInput = document.getElementById('caseSearchInput');
-const caseSearchBtn = document.getElementById('caseSearchBtn');
-const statusFilter = document.getElementById('statusFilter');
-const sortOrder = document.getElementById('sortOrder');
-const submitCaseBtn = document.getElementById('submitCaseBtn');
-const cancelCaseBtn = document.getElementById('cancelCaseBtn');
-const caseClientSelect = document.getElementById('case_client_id');
-
-// Modal Elements
-const deleteModal = document.getElementById('deleteModal');
-const deleteModalText = document.getElementById('deleteModalText');
-const confirmDeleteBtn = document.getElementById('confirmDelete');
-const cancelDeleteBtn = document.getElementById('cancelDelete');
-const caseDetailModal = document.getElementById('caseDetailModal');
-const caseDetailContent = document.getElementById('caseDetailContent');
-const closeCaseDetailBtn = document.getElementById('closeCaseDetail');
+// Bootstrap Modal instances
+let deleteModalInstance = null;
+let caseDetailModalInstance = null;
 
 // ==================== INITIALIZE ====================
 document.addEventListener('DOMContentLoaded', () => {
-    loadClients();
+    initializeModals();
     setupEventListeners();
+    loadClients();
 });
+
+function initializeModals() {
+    deleteModalInstance = new bootstrap.Modal(document.getElementById('deleteModal'));
+    caseDetailModalInstance = new bootstrap.Modal(document.getElementById('caseDetailModal'));
+}
 
 // ==================== EVENT LISTENERS ====================
 function setupEventListeners() {
-    // Tab switching
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    // Tab switching - Bootstrap handles this, but we need to load data
+    document.getElementById('cases-tab-btn').addEventListener('shown.bs.tab', () => {
+        loadClientDropdown();
+        loadCases();
+    });
+    
+    document.getElementById('clients-tab-btn').addEventListener('shown.bs.tab', () => {
+        loadClients();
     });
 
     // Client events
-    clientForm.addEventListener('submit', handleClientFormSubmit);
-    clientSearchBtn.addEventListener('click', handleClientSearch);
-    clientSearchInput.addEventListener('keypress', (e) => {
+    document.getElementById('clientForm').addEventListener('submit', handleClientFormSubmit);
+    document.getElementById('clientSearchBtn').addEventListener('click', handleClientSearch);
+    document.getElementById('clientSearchInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleClientSearch();
     });
-    cancelClientBtn.addEventListener('click', resetClientForm);
+    document.getElementById('cancelClientBtn').addEventListener('click', resetClientForm);
 
     // Case events
-    caseForm.addEventListener('submit', handleCaseFormSubmit);
-    caseSearchBtn.addEventListener('click', handleCaseSearch);
-    caseSearchInput.addEventListener('keypress', (e) => {
+    document.getElementById('caseForm').addEventListener('submit', handleCaseFormSubmit);
+    document.getElementById('caseSearchBtn').addEventListener('click', handleCaseSearch);
+    document.getElementById('caseSearchInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleCaseSearch();
     });
-    statusFilter.addEventListener('change', handleCaseSearch);
-    sortOrder.addEventListener('change', handleCaseSearch);
-    cancelCaseBtn.addEventListener('click', resetCaseForm);
+    document.getElementById('statusFilter').addEventListener('change', handleCaseSearch);
+    document.getElementById('sortOrder').addEventListener('change', handleCaseSearch);
+    document.getElementById('cancelCaseBtn').addEventListener('click', resetCaseForm);
 
     // Modal events
-    confirmDeleteBtn.addEventListener('click', handleConfirmDelete);
-    cancelDeleteBtn.addEventListener('click', hideDeleteModal);
-    deleteModal.addEventListener('click', (e) => {
-        if (e.target === deleteModal) hideDeleteModal();
-    });
-    closeCaseDetailBtn.addEventListener('click', hideCaseDetailModal);
-    caseDetailModal.addEventListener('click', (e) => {
-        if (e.target === caseDetailModal) hideCaseDetailModal();
-    });
+    document.getElementById('confirmDelete').addEventListener('click', handleConfirmDelete);
 }
 
-// ==================== TAB SWITCHING ====================
-function switchTab(tabName) {
-    tabBtns.forEach(btn => btn.classList.remove('active'));
-    tabContents.forEach(content => content.classList.remove('active'));
-
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`${tabName}-tab`).classList.add('active');
-
-    if (tabName === 'cases') {
-        loadClientDropdown();
-        loadCases();
-    } else {
-        loadClients();
-    }
+// ==================== ALERT SYSTEM ====================
+function showAlert(message, type = 'success') {
+    const container = document.getElementById('alertContainer');
+    const alertId = 'alert-' + Date.now();
+    
+    const alertHtml = `
+        <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
+            ${escapeHtml(message)}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    container.insertAdjacentHTML('beforeend', alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        const alert = document.getElementById(alertId);
+        if (alert) {
+            bootstrap.Alert.getOrCreateInstance(alert).close();
+        }
+    }, 5000);
 }
 
 // ==================== CLIENT FUNCTIONS ====================
 async function loadClients() {
-    clientList.innerHTML = '<p class="loading">Loading clients...</p>';
+    const tbody = document.getElementById('clientTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading...</td></tr>';
 
     try {
         const data = await ApiService.getClients(clientCurrentPage, clientPageSize, clientSearchTerm);
-        renderClientList(data);
+        renderClientTable(data);
         renderClientPagination(data);
     } catch (error) {
-        clientList.innerHTML = `<p class="no-data">Error loading clients: ${error.message}</p>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-exclamation-circle me-2"></i>${escapeHtml(error.message)}</td></tr>`;
     }
 }
 
-function renderClientList(data) {
+function renderClientTable(data) {
+    const tbody = document.getElementById('clientTableBody');
+    
     if (data.clients.length === 0) {
-        clientList.innerHTML = '<p class="no-data">No clients found. Add your first client above!</p>';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-5">
+                    <div class="empty-state">
+                        <i class="bi bi-people"></i>
+                        <p class="mb-0">No clients found</p>
+                        <small class="text-muted">Add your first client using the form above</small>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
 
-    const tableHTML = `
-        <table class="client-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Client Name</th>
-                    <th>Company</th>
-                    <th>City</th>
-                    <th>Contact Person</th>
-                    <th>Phone</th>
-                    <th>Email</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${data.clients.map(client => `
-                    <tr>
-                        <td>${client.id}</td>
-                        <td>${escapeHtml(client.client_name)}</td>
-                        <td>${escapeHtml(client.company_name || '-')}</td>
-                        <td>${escapeHtml(client.city || '-')}</td>
-                        <td>${escapeHtml(client.contact_person || '-')}</td>
-                        <td>${escapeHtml(client.phone || '-')}</td>
-                        <td>${escapeHtml(client.email || '-')}</td>
-                        <td class="actions">
-                            <button class="btn btn-secondary btn-small" onclick="editClient(${client.id})">Edit</button>
-                            <button class="btn btn-danger btn-small" onclick="showDeleteModal('client', ${client.id})">Delete</button>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-
-    clientList.innerHTML = tableHTML;
+    tbody.innerHTML = data.clients.map(client => `
+        <tr>
+            <td class="fw-medium">${escapeHtml(client.client_name)}</td>
+            <td>${escapeHtml(client.company_name || '-')}</td>
+            <td>${escapeHtml(client.city || '-')}</td>
+            <td>${escapeHtml(client.contact_person || '-')}</td>
+            <td>${escapeHtml(client.phone || '-')}</td>
+            <td>${escapeHtml(client.email || '-')}</td>
+            <td>
+                <div class="btn-group-actions">
+                    <button class="btn btn-outline-primary btn-sm" onclick="editClient(${client.id})" title="Edit">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="showDeleteModal('client', ${client.id})" title="Delete">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
 }
 
 function renderClientPagination(data) {
+    const pagination = document.getElementById('clientPagination');
     const totalPages = Math.ceil(data.total / data.page_size);
 
     if (totalPages <= 1) {
-        clientPagination.innerHTML = '';
+        pagination.innerHTML = `<small class="text-muted">${data.total} client${data.total !== 1 ? 's' : ''}</small>`;
         return;
     }
 
-    clientPagination.innerHTML = `
-        <button onclick="goToClientPage(${clientCurrentPage - 1})" ${clientCurrentPage === 1 ? 'disabled' : ''}>
-            ← Previous
-        </button>
-        <span>Page ${clientCurrentPage} of ${totalPages} (${data.total} clients)</span>
-        <button onclick="goToClientPage(${clientCurrentPage + 1})" ${clientCurrentPage === totalPages ? 'disabled' : ''}>
-            Next →
-        </button>
+    pagination.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <small class="text-muted">${data.total} clients</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item ${clientCurrentPage === 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="goToClientPage(${clientCurrentPage - 1}); return false;">Previous</a>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">${clientCurrentPage} / ${totalPages}</span>
+                    </li>
+                    <li class="page-item ${clientCurrentPage === totalPages ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="goToClientPage(${clientCurrentPage + 1}); return false;">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
     `;
 }
 
@@ -197,13 +182,18 @@ function goToClientPage(page) {
 }
 
 function handleClientSearch() {
-    clientSearchTerm = clientSearchInput.value.trim();
+    clientSearchTerm = document.getElementById('clientSearchInput').value.trim();
     clientCurrentPage = 1;
     loadClients();
 }
 
 async function handleClientFormSubmit(e) {
     e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitClientBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
 
     const formData = {
         client_name: document.getElementById('client_name').value.trim(),
@@ -217,16 +207,18 @@ async function handleClientFormSubmit(e) {
     try {
         if (editingClientId) {
             await ApiService.updateClient(editingClientId, formData);
-            showMessage(clientFormMessage, 'Client updated successfully!', 'success');
+            showAlert('Client updated successfully!', 'success');
         } else {
             await ApiService.createClient(formData);
-            showMessage(clientFormMessage, 'Client created successfully!', 'success');
+            showAlert('Client created successfully!', 'success');
         }
-
         resetClientForm();
         loadClients();
     } catch (error) {
-        showMessage(clientFormMessage, error.message, 'error');
+        showAlert(error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
     }
 }
 
@@ -242,52 +234,57 @@ async function editClient(clientId) {
         document.getElementById('email').value = client.email || '';
 
         editingClientId = clientId;
-        submitClientBtn.textContent = 'Update Client';
-        cancelClientBtn.style.display = 'inline-block';
+        document.getElementById('submitClientBtn').innerHTML = '<i class="bi bi-check-circle me-1"></i> Update Client';
+        document.getElementById('cancelClientBtn').classList.remove('d-none');
 
-        clientForm.scrollIntoView({ behavior: 'smooth' });
+        // Expand form if collapsed
+        const collapse = bootstrap.Collapse.getOrCreateInstance(document.getElementById('clientFormCollapse'), { toggle: false });
+        collapse.show();
+        
+        document.getElementById('clientForm').scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
-        showMessage(clientFormMessage, 'Error loading client: ' + error.message, 'error');
+        showAlert('Error loading client: ' + error.message, 'danger');
     }
 }
 
 function resetClientForm() {
-    clientForm.reset();
+    document.getElementById('clientForm').reset();
     editingClientId = null;
-    submitClientBtn.textContent = 'Add Client';
-    cancelClientBtn.style.display = 'none';
-    hideMessage(clientFormMessage);
+    document.getElementById('submitClientBtn').innerHTML = '<i class="bi bi-plus-circle me-1"></i> Add Client';
+    document.getElementById('cancelClientBtn').classList.add('d-none');
 }
 
 // ==================== CASE FUNCTIONS ====================
 async function loadClientDropdown() {
+    const select = document.getElementById('case_client_id');
+    select.innerHTML = '<option value="">Loading clients...</option>';
+    
     try {
-        caseClientSelect.innerHTML = '<option value="">Loading clients...</option>';
-        console.log('Fetching clients from API...');
         const data = await ApiService.getAllClients();
-        console.log('Clients received:', data);
-        caseClientSelect.innerHTML = '<option value="">Select a client...</option>';
+        select.innerHTML = '<option value="">Select a client...</option>';
         
         if (data.clients.length === 0) {
-            caseClientSelect.innerHTML = '<option value="">No clients found - add a client first</option>';
+            select.innerHTML = '<option value="">No clients available - add one first</option>';
             return;
         }
         
         data.clients.forEach(client => {
             const option = document.createElement('option');
             option.value = client.id;
-            option.textContent = `${client.client_name}${client.company_name ? ` (${client.company_name})` : ''}`;
-            caseClientSelect.appendChild(option);
+            option.textContent = client.company_name 
+                ? `${client.client_name} (${client.company_name})`
+                : client.client_name;
+            select.appendChild(option);
         });
     } catch (error) {
-        console.error('Error loading clients for dropdown:', error);
-        alert('Error loading clients: ' + error.message + '\n\nMake sure:\n1. Backend is running on http://127.0.0.1:8000\n2. You are accessing frontend via http://127.0.0.1:3000 (not file://)');
-        caseClientSelect.innerHTML = '<option value="">Error loading clients</option>';
+        select.innerHTML = '<option value="">Error loading clients</option>';
+        showAlert('Failed to load clients: ' + error.message, 'danger');
     }
 }
 
 async function loadCases() {
-    caseList.innerHTML = '<p class="loading">Loading cases...</p>';
+    const tbody = document.getElementById('caseTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading...</td></tr>';
 
     try {
         const data = await ApiService.getCases({
@@ -297,71 +294,87 @@ async function loadCases() {
             sortOrder: caseSortOrder,
             search: caseSearchTerm
         });
-        renderCaseList(data);
+        renderCaseTable(data);
         renderCasePagination(data);
     } catch (error) {
-        caseList.innerHTML = `<p class="no-data">Error loading cases: ${error.message}</p>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger"><i class="bi bi-exclamation-circle me-2"></i>${escapeHtml(error.message)}</td></tr>`;
     }
 }
 
-function renderCaseList(data) {
+function renderCaseTable(data) {
+    const tbody = document.getElementById('caseTableBody');
+    
     if (data.cases.length === 0) {
-        caseList.innerHTML = '<p class="no-data">No cases found. Add your first case above!</p>';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center py-5">
+                    <div class="empty-state">
+                        <i class="bi bi-folder"></i>
+                        <p class="mb-0">No cases found</p>
+                        <small class="text-muted">Add your first case using the form above</small>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
 
-    const tableHTML = `
-        <table class="client-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Client Name</th>
-                    <th>Invoice #</th>
-                    <th>Amount</th>
-                    <th>Due Date</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${data.cases.map(c => `
-                    <tr>
-                        <td>${c.id}</td>
-                        <td>${escapeHtml(c.client.client_name)}</td>
-                        <td>${escapeHtml(c.invoice_number)}</td>
-                        <td>$${parseFloat(c.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                        <td>${formatDate(c.due_date)}</td>
-                        <td><span class="status-badge ${getStatusClass(c.status)}">${escapeHtml(c.status)}</span></td>
-                        <td class="actions">
-                            <button class="btn btn-secondary btn-small" onclick="viewCase(${c.id})">View</button>
-                            <button class="btn btn-secondary btn-small" onclick="editCase(${c.id})">Edit</button>
-                            <button class="btn btn-danger btn-small" onclick="showDeleteModal('case', ${c.id})">Delete</button>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-
-    caseList.innerHTML = tableHTML;
+    tbody.innerHTML = data.cases.map(c => {
+        const isOverdue = new Date(c.due_date) < new Date() && c.status !== 'Closed';
+        return `
+            <tr onclick="viewCase(${c.id})" style="cursor: pointer;">
+                <td class="fw-medium">${escapeHtml(c.client.client_name)}</td>
+                <td><code>${escapeHtml(c.invoice_number)}</code></td>
+                <td class="money">$${parseFloat(c.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <td class="${isOverdue ? 'overdue' : ''}">
+                    ${isOverdue ? '<i class="bi bi-exclamation-triangle me-1"></i>' : ''}
+                    ${formatDate(c.due_date)}
+                </td>
+                <td><span class="badge ${getStatusBadgeClass(c.status)}">${escapeHtml(c.status)}</span></td>
+                <td onclick="event.stopPropagation()">
+                    <div class="btn-group-actions">
+                        <button class="btn btn-outline-primary btn-sm" onclick="viewCase(${c.id})" title="View Details">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="editCase(${c.id})" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="showDeleteModal('case', ${c.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function renderCasePagination(data) {
+    const pagination = document.getElementById('casePagination');
     const totalPages = Math.ceil(data.total / data.page_size);
 
     if (totalPages <= 1) {
-        casePagination.innerHTML = '';
+        pagination.innerHTML = `<small class="text-muted">${data.total} case${data.total !== 1 ? 's' : ''}</small>`;
         return;
     }
 
-    casePagination.innerHTML = `
-        <button onclick="goToCasePage(${caseCurrentPage - 1})" ${caseCurrentPage === 1 ? 'disabled' : ''}>
-            ← Previous
-        </button>
-        <span>Page ${caseCurrentPage} of ${totalPages} (${data.total} cases)</span>
-        <button onclick="goToCasePage(${caseCurrentPage + 1})" ${caseCurrentPage === totalPages ? 'disabled' : ''}>
-            Next →
-        </button>
+    pagination.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <small class="text-muted">${data.total} cases</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item ${caseCurrentPage === 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="goToCasePage(${caseCurrentPage - 1}); return false;">Previous</a>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">${caseCurrentPage} / ${totalPages}</span>
+                    </li>
+                    <li class="page-item ${caseCurrentPage === totalPages ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="goToCasePage(${caseCurrentPage + 1}); return false;">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
     `;
 }
 
@@ -371,15 +384,20 @@ function goToCasePage(page) {
 }
 
 function handleCaseSearch() {
-    caseSearchTerm = caseSearchInput.value.trim();
-    caseStatusFilter = statusFilter.value;
-    caseSortOrder = sortOrder.value;
+    caseSearchTerm = document.getElementById('caseSearchInput').value.trim();
+    caseStatusFilter = document.getElementById('statusFilter').value;
+    caseSortOrder = document.getElementById('sortOrder').value;
     caseCurrentPage = 1;
     loadCases();
 }
 
 async function handleCaseFormSubmit(e) {
     e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitCaseBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
 
     const formData = {
         client_id: parseInt(document.getElementById('case_client_id').value),
@@ -394,85 +412,96 @@ async function handleCaseFormSubmit(e) {
     try {
         if (editingCaseId) {
             await ApiService.updateCase(editingCaseId, formData);
-            showMessage(caseFormMessage, 'Case updated successfully!', 'success');
+            showAlert('Case updated successfully!', 'success');
         } else {
             await ApiService.createCase(formData);
-            showMessage(caseFormMessage, 'Case created successfully!', 'success');
+            showAlert('Case created successfully!', 'success');
         }
-
         resetCaseForm();
         loadCases();
     } catch (error) {
-        showMessage(caseFormMessage, error.message, 'error');
+        showAlert(error.message, 'danger');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
     }
 }
 
 async function viewCase(caseId) {
+    const content = document.getElementById('caseDetailContent');
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    caseDetailModalInstance.show();
+    
     try {
         const c = await ApiService.getCase(caseId);
+        const isOverdue = new Date(c.due_date) < new Date() && c.status !== 'Closed';
         
-        caseDetailContent.innerHTML = `
-            <div class="detail-grid">
-                <div class="detail-item">
-                    <label>Client</label>
-                    <span>${escapeHtml(c.client.client_name)}</span>
+        content.innerHTML = `
+            <div class="case-detail-grid">
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Client</div>
+                    <div class="case-detail-value">${escapeHtml(c.client.client_name)}</div>
                 </div>
-                <div class="detail-item">
-                    <label>Company</label>
-                    <span>${escapeHtml(c.client.company_name || '-')}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Company</div>
+                    <div class="case-detail-value">${escapeHtml(c.client.company_name || '-')}</div>
                 </div>
-                <div class="detail-item">
-                    <label>Invoice Number</label>
-                    <span>${escapeHtml(c.invoice_number)}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Invoice Number</div>
+                    <div class="case-detail-value"><code>${escapeHtml(c.invoice_number)}</code></div>
                 </div>
-                <div class="detail-item">
-                    <label>Invoice Amount</label>
-                    <span>$${parseFloat(c.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Amount</div>
+                    <div class="case-detail-value money">$${parseFloat(c.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                 </div>
-                <div class="detail-item">
-                    <label>Invoice Date</label>
-                    <span>${formatDate(c.invoice_date)}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Invoice Date</div>
+                    <div class="case-detail-value">${formatDate(c.invoice_date)}</div>
                 </div>
-                <div class="detail-item">
-                    <label>Due Date</label>
-                    <span>${formatDate(c.due_date)}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Due Date</div>
+                    <div class="case-detail-value ${isOverdue ? 'overdue' : ''}">${formatDate(c.due_date)}${isOverdue ? ' <i class="bi bi-exclamation-triangle"></i>' : ''}</div>
                 </div>
-                <div class="detail-item">
-                    <label>Status</label>
-                    <span class="status-badge ${getStatusClass(c.status)}">${escapeHtml(c.status)}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Status</div>
+                    <div class="case-detail-value"><span class="badge ${getStatusBadgeClass(c.status)}">${escapeHtml(c.status)}</span></div>
                 </div>
-                <div class="detail-item">
-                    <label>Created</label>
-                    <span>${formatDateTime(c.created_at)}</span>
+                <div class="case-detail-item">
+                    <div class="case-detail-label">Created</div>
+                    <div class="case-detail-value">${formatDateTime(c.created_at)}</div>
                 </div>
-                <div class="detail-item full-width">
-                    <label>Last Follow-up Notes</label>
-                    <span>${escapeHtml(c.last_follow_up_notes || 'No notes yet')}</span>
+                <div class="case-detail-item full-width">
+                    <div class="case-detail-label">Follow-up Notes</div>
+                    <div class="case-detail-value">${escapeHtml(c.last_follow_up_notes || 'No notes recorded')}</div>
                 </div>
             </div>
             
-            <div class="update-form">
-                <h4>Quick Update</h4>
-                <div class="form-group">
-                    <label>Update Status</label>
-                    <select id="update_status">
-                        <option value="New" ${c.status === 'New' ? 'selected' : ''}>New</option>
-                        <option value="In Follow-up" ${c.status === 'In Follow-up' ? 'selected' : ''}>In Follow-up</option>
-                        <option value="Partially Paid" ${c.status === 'Partially Paid' ? 'selected' : ''}>Partially Paid</option>
-                        <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
-                    </select>
+            <div class="update-case-form">
+                <h6 class="text-primary mb-3"><i class="bi bi-pencil-square me-2"></i>Quick Update</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="update_status">
+                            <option value="New" ${c.status === 'New' ? 'selected' : ''}>New</option>
+                            <option value="In Follow-up" ${c.status === 'In Follow-up' ? 'selected' : ''}>In Follow-up</option>
+                            <option value="Partially Paid" ${c.status === 'Partially Paid' ? 'selected' : ''}>Partially Paid</option>
+                            <option value="Closed" ${c.status === 'Closed' ? 'selected' : ''}>Closed</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" id="update_notes" rows="2">${escapeHtml(c.last_follow_up_notes || '')}</textarea>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Update Notes</label>
-                    <textarea id="update_notes" rows="3">${escapeHtml(c.last_follow_up_notes || '')}</textarea>
+                <div class="mt-3">
+                    <button class="btn btn-primary" onclick="updateCaseStatus(${c.id})">
+                        <i class="bi bi-check-lg me-1"></i> Save Changes
+                    </button>
                 </div>
-                <button class="btn btn-primary" onclick="updateCaseStatus(${c.id})">Save Changes</button>
             </div>
         `;
-        
-        caseDetailModal.classList.add('show');
     } catch (error) {
-        showMessage(caseFormMessage, 'Error loading case: ' + error.message, 'error');
+        content.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -486,11 +515,11 @@ async function updateCaseStatus(caseId) {
             last_follow_up_notes: notes || null
         });
         
-        hideCaseDetailModal();
-        showMessage(caseFormMessage, 'Case updated successfully!', 'success');
+        caseDetailModalInstance.hide();
+        showAlert('Case updated successfully!', 'success');
         loadCases();
     } catch (error) {
-        alert('Error updating case: ' + error.message);
+        showAlert('Error updating case: ' + error.message, 'danger');
     }
 }
 
@@ -507,77 +536,68 @@ async function editCase(caseId) {
         document.getElementById('last_follow_up_notes').value = c.last_follow_up_notes || '';
 
         editingCaseId = caseId;
-        caseFormTitle.textContent = 'Edit Case';
-        submitCaseBtn.textContent = 'Update Case';
-        cancelCaseBtn.style.display = 'inline-block';
+        document.getElementById('caseFormTitle').innerHTML = '<i class="bi bi-pencil me-2"></i>Edit Case';
+        document.getElementById('submitCaseBtn').innerHTML = '<i class="bi bi-check-circle me-1"></i> Update Case';
+        document.getElementById('cancelCaseBtn').classList.remove('d-none');
 
-        caseForm.scrollIntoView({ behavior: 'smooth' });
+        // Expand form if collapsed
+        const collapse = bootstrap.Collapse.getOrCreateInstance(document.getElementById('caseFormCollapse'), { toggle: false });
+        collapse.show();
+        
+        document.getElementById('caseForm').scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
-        showMessage(caseFormMessage, 'Error loading case: ' + error.message, 'error');
+        showAlert('Error loading case: ' + error.message, 'danger');
     }
 }
 
 function resetCaseForm() {
-    caseForm.reset();
+    document.getElementById('caseForm').reset();
     editingCaseId = null;
-    caseFormTitle.textContent = 'Add New Case';
-    submitCaseBtn.textContent = 'Add Case';
-    cancelCaseBtn.style.display = 'none';
-    hideMessage(caseFormMessage);
+    document.getElementById('caseFormTitle').innerHTML = '<i class="bi bi-folder-plus me-2"></i>Add New Case';
+    document.getElementById('submitCaseBtn').innerHTML = '<i class="bi bi-plus-circle me-1"></i> Add Case';
+    document.getElementById('cancelCaseBtn').classList.add('d-none');
 }
 
-// ==================== MODAL FUNCTIONS ====================
+// ==================== DELETE MODAL ====================
 function showDeleteModal(type, id) {
     deleteType = type;
     deleteId = id;
-    deleteModalText.textContent = `Are you sure you want to delete this ${type}? This action cannot be undone.`;
-    deleteModal.classList.add('show');
-}
-
-function hideDeleteModal() {
-    deleteType = null;
-    deleteId = null;
-    deleteModal.classList.remove('show');
+    document.getElementById('deleteModalText').textContent = 
+        `Are you sure you want to delete this ${type}? This action cannot be undone.`;
+    deleteModalInstance.show();
 }
 
 async function handleConfirmDelete() {
     if (!deleteId || !deleteType) return;
 
+    const btn = document.getElementById('confirmDelete');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+
     try {
         if (deleteType === 'client') {
             await ApiService.deleteClient(deleteId);
-            hideDeleteModal();
-            showMessage(clientFormMessage, 'Client deleted successfully!', 'success');
+            showAlert('Client deleted successfully!', 'success');
             loadClients();
         } else if (deleteType === 'case') {
             await ApiService.deleteCase(deleteId);
-            hideDeleteModal();
-            showMessage(caseFormMessage, 'Case deleted successfully!', 'success');
+            showAlert('Case deleted successfully!', 'success');
             loadCases();
         }
+        deleteModalInstance.hide();
     } catch (error) {
-        hideDeleteModal();
-        const messageEl = deleteType === 'client' ? clientFormMessage : caseFormMessage;
-        showMessage(messageEl, `Error deleting ${deleteType}: ${error.message}`, 'error');
+        showAlert(`Error deleting ${deleteType}: ${error.message}`, 'danger');
+        deleteModalInstance.hide();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        deleteType = null;
+        deleteId = null;
     }
 }
 
-function hideCaseDetailModal() {
-    caseDetailModal.classList.remove('show');
-}
-
 // ==================== UTILITY FUNCTIONS ====================
-function showMessage(element, message, type) {
-    element.textContent = message;
-    element.className = `message ${type}`;
-    setTimeout(() => hideMessage(element), 5000);
-}
-
-function hideMessage(element) {
-    element.className = 'message';
-    element.textContent = '';
-}
-
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -600,12 +620,12 @@ function formatDateTime(dateStr) {
     });
 }
 
-function getStatusClass(status) {
-    const statusMap = {
-        'New': 'status-new',
-        'In Follow-up': 'status-in-follow-up',
-        'Partially Paid': 'status-partially-paid',
-        'Closed': 'status-closed'
+function getStatusBadgeClass(status) {
+    const map = {
+        'New': 'badge-new',
+        'In Follow-up': 'badge-followup',
+        'Partially Paid': 'badge-partial',
+        'Closed': 'badge-closed'
     };
-    return statusMap[status] || 'status-new';
+    return map[status] || 'bg-secondary';
 }
