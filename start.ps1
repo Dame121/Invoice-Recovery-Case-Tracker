@@ -41,10 +41,17 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$backendPath'
 
 Start-Sleep -Seconds 2
 
-# Start Frontend Server
-Write-Host "[3/4] Starting Frontend Server..." -ForegroundColor Yellow
+# Start Frontend Server (Node.js/Express)
+Write-Host "[3/4] Starting Frontend Server (Node.js)..." -ForegroundColor Yellow
 $frontendPath = Join-Path $projectRoot "frontend"
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$frontendPath'; Write-Host 'Frontend Server Running...' -ForegroundColor Green; python -m http.server 3000" -WindowStyle Normal
+
+# Check if node_modules exists, if not install dependencies
+if (-not (Test-Path (Join-Path $frontendPath "node_modules"))) {
+    Write-Host "  Installing frontend dependencies..." -ForegroundColor Gray
+    Start-Process -FilePath "npm" -ArgumentList "install" -WorkingDirectory $frontendPath -Wait -NoNewWindow
+}
+
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$frontendPath'; Write-Host 'Frontend Server Running (Node.js/Express)...' -ForegroundColor Green; npm start" -WindowStyle Normal
 
 Start-Sleep -Seconds 2
 
